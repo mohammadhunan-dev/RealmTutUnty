@@ -37,11 +37,11 @@ public class ScoreModel : RealmObject
 
     }
 
-    public ScoreModel(PlayerModel scoreOwner, int points, int enemiesDefeated, int tokensCollected)
-    {
-        this.ScoreOwner = scoreOwner;
-        this.Points = points;
-        this.EnemiesDefeated = enemiesDefeated;
-        this.TokensCollected = tokensCollected;
-    }
+    //public ScoreModel(PlayerModel scoreOwner, int points, int enemiesDefeated, int tokensCollected)
+    //{
+    //    this.ScoreOwner = scoreOwner;
+    //    this.Points = points;
+    //    this.EnemiesDefeated = enemiesDefeated;
+    //    this.TokensCollected = tokensCollected;
+    //}
 }
