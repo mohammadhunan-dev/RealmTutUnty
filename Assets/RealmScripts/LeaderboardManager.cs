@@ -14,49 +14,51 @@ using Realms.Sync;
 public class LeaderboardManager : MonoBehaviour
 {
     private Realm realm;
+    private IDisposable listenerToken;
     public ListView listView;
     public Button toggleButton;
     public Label displayTitle;
-    public bool isUIVisible = true;
     public int currentPlayerHighestPoints = 0; // 0 til it's set
     public Realms.Sync.User user;
-
+    public bool isLeaderboardGUICreated = false; 
     public static LeaderboardManager Instance;
+    public bool isUIVisible;
+    public int maximumAmountOfTopScores;
+    public List<ScoreModel> topScores;
+    public VisualElement root;
 
 
     // 
     void Awake()
     {
         Instance = this;
-        Debug.Log("Awake");
     }
 
-    // Start is called before the first frame update
-    void Start()
-    {
-    }
     public async void setLoggedInUser(Realms.Sync.User loggedInUser)
     {
         user = loggedInUser;
         var syncConfiguration = new SyncConfiguration("UnityTutorialPartition", user);
         realm = await Realm.GetInstanceAsync(syncConfiguration);
-        createLeaderboardGui();
 
-        //getTopScores();
-    }
-
-    public void createLeaderboardGui()
-    {
-        var root = GetComponent<UIDocument>().rootVisualElement;
-        createLeaderboardUI();
-        root.Add(toggleButton);
-        root.Add(displayTitle);
-        root.Add(listView);
-
-        toggleButton.clicked += () =>
+        // only create the leaderboard on the first run, consecutive restarts/reruns will already have a leaderboard created
+        if(isLeaderboardGUICreated == false)
         {
+            root = GetComponent<UIDocument>().rootVisualElement;
+            createLeaderboardUI();
+            root.Add(toggleButton);
+            root.Add(displayTitle);
+            root.Add(listView);
+            isUIVisible = true;
+
             toggleUIVisible();
-        };
+
+            toggleButton.clicked += () =>
+            {
+                toggleUIVisible();
+            };
+            setScoreListener(); // start listening for score changes once the leaderboard GUI has launched
+            isLeaderboardGUICreated = true;
+        }
     }
 
     public int getRealmPlayerTopScore()
@@ -66,29 +68,13 @@ public class LeaderboardManager : MonoBehaviour
         return realmPlayer.Scores.OrderByDescending(s => s.Points).First().Points;
     }
 
-    public void listenToScoreChanges()
-    {
-
-    }
-
-
-    //public void getTopScores()
-    //{
-    //    //var topScores = realm.All<ScoreModel>().Where((e) => e.TokensCollected > 1 );
-
-    //    var topScores = realm.All<ScoreModel>().OrderByDescending(s => s.Points).ToList();
-    //    ///.First().Points;
-
-    //    for (int i = 0; i < 5; i++)
-    //    {
-    //        Debug.Log("Score : " + topScores[i].Points + topScores[i].ScoreOwner.Name);
-    //    };
-    //}
-
     void toggleUIVisible()
     {
+        Debug.Log("isUIVisible -" + isUIVisible);
         if (isUIVisible == true)
         {
+
+            Debug.Log("A Called!");
             // if ui is already visible, and the toggle button is pressed, then hide it
             displayTitle.RemoveFromClassList("visible");
             displayTitle.AddToClassList("hide");
@@ -98,6 +84,7 @@ public class LeaderboardManager : MonoBehaviour
         }
         else
         {
+            Debug.Log("B Called");
             // if ui is not visible, and the toggle button is pressed, then show it
             displayTitle.RemoveFromClassList("hide");
             displayTitle.AddToClassList("visible");
@@ -119,30 +106,39 @@ public class LeaderboardManager : MonoBehaviour
         displayTitle.AddToClassList("display-title");
 
 
-        // Create a list of data. In this case, numbers from 1 to 1000.
-        const int itemCount = 5;
+        topScores = realm.All<ScoreModel>().OrderByDescending(s => s.Points).ToList();
+        createTopScoreListView();
 
-        var topScoresListItems = new List<string>(itemCount);
+
+    }
+    public void createTopScoreListView()
+    {
+        if (topScores.Count > 4)
+        {
+            maximumAmountOfTopScores = 5;
+        }
+        else
+        {
+            maximumAmountOfTopScores = topScores.Count;
+        }
+
+
+        var topScoresListItems = new List<string>();
 
         topScoresListItems.Add("Your top points: " + getRealmPlayerTopScore());
 
-        var topScores = realm.All<ScoreModel>().OrderByDescending(s => s.Points).ToList();
 
-        for (int i = 0; i < 5; i++)
+        for (int i = 0; i < maximumAmountOfTopScores; i++)
         {
-            if(topScores[i].Points > 1) // if there's not many players there may not be 5 top scores yet
+            if (topScores[i].Points > 1) // if there's not many players there may not be 5 top scores yet
             {
                 topScoresListItems.Add($"{topScores[i].ScoreOwner.Name}: {topScores[i].Points} points");
             }
         };
 
-
-
-
-
         // Create a new label for each top score
-        //var label = new Label();
-        //label.AddToClassList("list-item-game-name-label");
+        var label = new Label();
+        label.AddToClassList("list-item-game-name-label");
         Func<VisualElement> makeItem = () => new Label();
 
         // Bind Scores to the UI
@@ -157,13 +153,64 @@ public class LeaderboardManager : MonoBehaviour
 
         listView = new ListView(topScoresListItems, itemHeight, makeItem, bindItem);
         listView.AddToClassList("list-view");
+        
+    }
+    public void setScoreListener()
+    {
+        // Observe collection notifications. Retain the token to keep observing.
+        listenerToken = realm.All<ScoreModel>()
+            .SubscribeForNotifications((sender, changes, error) =>
+            {
+
+                Debug.Log("new change!!!");
+                if (error != null)
+                {
+                    // Show error message
+                    Debug.Log("an error occurred while listening for score changes :" + error);
+                    return;
+                }
+                // we only need to check for inserted because scores can't be modified or deleted after the run is complete
+                foreach (var i in changes.InsertedIndices)
+                {
+                    // ... handle insertions ...
+                    var newScore = realm.All<ScoreModel>().ElementAt(i);
+                    Debug.Log("inserted boi ----" + newScore.Points);
+                    Debug.Log("new score owner ----" + newScore.ScoreOwner.Name);
+
+                    for (var scoreIndex = 0; scoreIndex < topScores.Count; scoreIndex++)
+                    {
+                        if (topScores.ElementAt(scoreIndex).Points < newScore.Points)
+                        {
+                            if (topScores.Count > 4)
+                            { // An item shouldnt be removed if its the leaderboard is less than 5 items
+                                topScores.RemoveAt(topScores.Count - 1);
+                            }
+                            topScores.Insert(scoreIndex, newScore);
+                            root.Remove(listView); // remove the old listView
+                            createTopScoreListView(); // create a new listView
+                            root.Add(listView); // add the new listView to the UI
+                            break;
+                        }
+                    }
+
+
+
+
+                }
+            });
     }
 
-    // works for local
-    //void getPlayerTopScore()
-    //{
-    //    var player = realm.Find<PlayerModel>("OfflinePlayer1");
-    //    currentPlayerHighestPoints = realm.All<ScoreModel>().Filter("scoreOwner.name = 'OfflinePlayer1' SORT(points DESC)").First().Points;
-    //}
+    void OnDisable()
+    {
+        if (realm != null)
+        {
+            realm.Dispose();
+        }
+
+        if(listenerToken != null)
+        {
+            realm.Dispose();
+        }
+    }
 
 }

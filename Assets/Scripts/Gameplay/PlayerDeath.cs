@@ -30,6 +30,13 @@ namespace Platformer.Gameplay
                 player.animator.SetTrigger("hurt");
                 player.animator.SetBool("dead", true);
                 Simulation.Schedule<PlayerSpawn>(2);
+
+
+                // scores should not be persisted if the player has not won, 
+                // on player lost should delete the current score
+                RealmController.Instance.deleteCurrentScore();
+                // alert RealmController that the game is being restarted
+                RealmController.Instance.restartGame();
             }
         }
     }

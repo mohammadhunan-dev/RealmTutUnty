@@ -26,25 +26,23 @@ public class RealmController : MonoBehaviour
     public static string email;
 
 
-    public Realms.Sync.User getUser()
+    public static async Task<Realm> CreateRealmAsync(Realms.Sync.User loggedInUser) // Realms.Sync.User
     {
-        return user;
+        var syncConfiguration = new SyncConfiguration("UnityTutorialPartition", loggedInUser);
+        return await Realm.GetInstanceAsync(syncConfiguration);
     }
 
     // when app.EmailPasswordAuth.RegisterUserAsync is called, then a new player should be created
-    public static async Task<PlayerModel> registerPlayer(string requestEmail, string requestPassword)
+    public async Task<Realms.Sync.User> OnPressRegister(string userInput, string passInput)
     {
-     
-        realmApp = App.Create("unity-realm-tutorial-vxtjl");
-        await realmApp.EmailPasswordAuth.RegisterUserAsync(requestEmail, requestPassword);
-        var newUser = await realmApp.LogInAsync(Credentials.EmailPassword(requestEmail, requestPassword));
-        var syncConfiguration = new SyncConfiguration("UnityTutorialPartition", newUser);
-        var realm = await Realm.GetInstanceAsync(syncConfiguration);
-        
-        
+        await realmApp.EmailPasswordAuth.RegisterUserAsync(userInput, passInput);
+        user = await realmApp.LogInAsync(Credentials.EmailPassword(userInput, passInput));
+        realm = await CreateRealmAsync(user);
+
+
         var p1 = new PlayerModel();
-        p1.Id = newUser.Id;
-        p1.Name = requestEmail;
+        p1.Id = user.Id;
+        p1.Name = userInput;
         p1.Partition = "UnityTutorialPartition";
 
         var s1 = new ScoreModel();
@@ -60,30 +58,20 @@ public class RealmController : MonoBehaviour
             score = realm.Add(s1);
             realmPlayer.Scores.Add(score);
         });
-        return realmPlayer;
-        //return new PlayerModel();
-    }
-    public static async Task<Realms.Sync.User> logIn(string requestEmail, string requestPassword)
-    {
-        realmApp = App.Create("unity-realm-tutorial-vxtjl");
-        var loggedInUser = await realmApp.LogInAsync(Credentials.EmailPassword(requestEmail, requestPassword));
-        return loggedInUser;
+
+        startGame();
+        return user;
     }
 
-    public static async Task<Realm> CreateRealmAsync(Realms.Sync.User loggedInUser) // Realms.Sync.User
+    public async Task<Realms.Sync.User> OnPressLogin(string userInput, string passInput)
     {
-        var syncConfiguration = new SyncConfiguration("UnityTutorialPartition", loggedInUser);
-        return await Realm.GetInstanceAsync(syncConfiguration);
-    }
-
-    public static async void onPressLogin()
-    {
-        var tempEmail = "petunia.pometoun4@example.com";
-        var tempPass = "petunia";
-        user = await logIn(tempEmail, tempPass);
+        user = await realmApp.LogInAsync(Credentials.EmailPassword(userInput, passInput));
         if (user != null)
         {
             realm = await CreateRealmAsync(user);
+            Debug.Log($"Realm is located at: {realm.Config.DatabasePath}");
+
+
             realmPlayer = realm.Find<PlayerModel>(user.Id);
 
             if (realmPlayer != null)
@@ -101,21 +89,26 @@ public class RealmController : MonoBehaviour
                     realmPlayer.Scores.Add(score);
                 });
 
-                ScoreCardManager(); // set the initial scores
-
-
-                // record each 10 seconds (runTime will be used to calculate bonus points once the player wins the game)
-                var myTimer = new System.Timers.Timer(10000);
-                myTimer.Enabled = true;
-                myTimer.Elapsed += (sender, e) => runTime += 10;
-
-                LeaderboardManager.Instance.setLoggedInUser(user);
-
-
-
-
+                startGame();
             }
         }
+
+        return user;
+    }
+
+    public static void startGame()
+    {
+
+        ScoreCardManager(); // set the initial scores
+
+
+        // record each 10 seconds (runTime will be used to calculate bonus points once the player wins the game)
+        var myTimer = new System.Timers.Timer(10000);
+        myTimer.Enabled = true;
+        myTimer.Elapsed += (sender, e) => runTime += 10;
+
+        LeaderboardManager.Instance.setLoggedInUser(user);
+
     }
 
 
@@ -124,49 +117,8 @@ public class RealmController : MonoBehaviour
     void Awake()
     {
         Instance = this;
+        realmApp = App.Create("unity-tutorial-3-kgzvn");
 
-        //var createAndGetPlayer = await registerPlayer(tempEmail, tempPass);
-        //Debug.Log("do player exists?");
-        //Debug.Log(createAndGetPlayer);
-
-
-        //user = await logIn(tempEmail, tempPass);
-
-        //Debug.Log("do player exists?");
-        //Debug.Log(user);
-
-        onPressLogin();
-
-        //if(user != null)
-        //{
-        //    Debug.Log("login success!");
-        //    realm = await CreateRealmAsync(user);
-        //    realmPlayer = realm.Find<PlayerModel>(user.Id);
-
-        //    if (realmPlayer != null)
-        //    {
-        //        var s1 = new ScoreModel();
-        //        s1.ScoreOwner = realmPlayer;
-        //        s1.Points = 0;
-        //        s1.EnemiesDefeated = 0;
-        //        s1.TokensCollected = 0;
-        //        s1.ScoreOwner = realmPlayer;
-
-        //        realm.Write(() =>
-        //        {
-        //            score = realm.Add(s1);
-        //            realmPlayer.Scores.Add(score);
-        //        });
-
-        //        ScoreCardManager(); // set the initial scores
-
-
-        //        // record each 10 seconds (runTime will be used to calculate bonus points once the player wins the game)
-        //        var myTimer = new System.Timers.Timer(10000);
-        //        myTimer.Enabled = true;
-        //        myTimer.Elapsed += (sender, e) => runTime += 10; 
-        //    }
-        //}
     }
     public void collectToken() // performs an update on the Character Model's token count
     {
@@ -234,14 +186,48 @@ public class RealmController : MonoBehaviour
         {
             score.Points = finalPoints;
         });
-
-
         return finalPoints;
     }
 
+
+    public void deleteCurrentScore()
+    {
+        realm.Write(() =>
+        {
+            realm.Remove(score);
+            realmPlayer.Scores.Remove(score);
+        });
+    }
+
+    public void restartGame()
+    {
+        if (realmPlayer != null)
+        {
+            // create a new score for the game
+            var s1 = new ScoreModel();
+            s1.ScoreOwner = realmPlayer;
+            s1.Points = 0;
+            s1.EnemiesDefeated = 0;
+            s1.TokensCollected = 0;
+            s1.ScoreOwner = realmPlayer;
+
+            realm.Write(() =>
+            {
+                score = realm.Add(s1);
+                realmPlayer.Scores.Add(score);
+            });
+
+            startGame();
+        }
+    }
+
+
     void OnDisable()
     {
-        //realm.Dispose();
+        if(realm != null)
+        {
+            realm.Dispose();
+        }
     }
 
     // :code-block-start: realm-controller
