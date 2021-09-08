@@ -117,7 +117,7 @@ public class RealmController : MonoBehaviour
     void Awake()
     {
         Instance = this;
-        realmApp = App.Create("unity-tutorial-3-kgzvn");
+        realmApp = App.Create(Constants.Realm.AppId);
 
     }
     public void collectToken() // performs an update on the Character Model's token count
